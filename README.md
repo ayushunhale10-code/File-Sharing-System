@@ -16,6 +16,8 @@ ShareSphere is a scalable file sharing system built using Streamlit, Python, and
 - Database: MongoDB (NoSQL)
 
 ## 📁 Project Structure
+
+```
 file-sharing-system/
 │── app.py                # Streamlit UI + main logic
 │── backend/              # Backend logic
@@ -24,3 +26,4 @@ file-sharing-system/
 │── uploads/              # Stored files
 │── requirements.txt
 │── README.md
+```
