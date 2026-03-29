@@ -4,23 +4,26 @@ from datetime import datetime, timezone
 from bson import ObjectId, Int64
 from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError
+from dotenv import load_dotenv
 
-# CONNECTION
+# ── LOAD ENV ────────────────────────────────────────────────────────────────
+load_dotenv()
+MONGO_URI = os.getenv("MONGO_URI")
 
+# ── CONNECTION ───────────────────────────────────────────────────────────────
 def get_db():
     """
     Returns the sharesphere_db database object.
-    Reads MONGO_URI from environment, falls back to localhost.
+    Reads MONGO_URI from .env, falls back to localhost.
     """
-    uri = "mongodb://sharesphere_app:sharesphere%40123@localhost:27017/sharesphere_db"
-    client = MongoClient(uri, serverSelectionTimeoutMS=5000)
-    return client["sharesphere_db"]
+    if not MONGO_URI:
+        raise ValueError("MONGO_URI is not set in the environment variables!")
+    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+    return client.get_database()  # returns database from URI
 
-# UTILITY
-
+# ── UTILITY ────────────────────────────────────────────────────────────────
 def now():
     return datetime.now(timezone.utc)
-
 
 def to_object_id(id_value):
     """Safely convert string to ObjectId."""
@@ -28,97 +31,111 @@ def to_object_id(id_value):
         return id_value
     return ObjectId(str(id_value))
 
-# USERS
-
+# ── USERS ──────────────────────────────────────────────────────────────────
 def create_user(db, username: str, email: str, password: str, role: str = "user") -> dict:
-    """
-    Register a new user. Hashes password with bcrypt.
-    Returns: { "success": True, "user_id": str } or { "success": False, "error": str }
-    """
     password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
-
     try:
         result = db.users.insert_one({
-            "username":      username,
-            "email":         email,
+            "username": username,
+            "email": email,
             "password_hash": password_hash,
-            "role":          role,
-            "storage_used":  Int64(0),
+            "role": role,
+            "storage_used": Int64(0),
             "storage_quota": Int64(5368709120),
-            "is_active":     True,
-            "created_at":    now(),
-            "updated_at":    now(),
-            "last_login":    None
+            "is_active": True,
+            "created_at": now(),
+            "updated_at": now(),
+            "last_login": None
         })
-        log_event(db, "login", result.inserted_id, status="success",
-                  details={"action": "register"})
+        log_event(db, "login", result.inserted_id, status="success", details={"action": "register"})
         return {"success": True, "user_id": str(result.inserted_id)}
     except DuplicateKeyError as e:
         field = "username" if "username" in str(e) else "email"
         return {"success": False, "error": f"{field} already exists"}
 
-
 def find_user_by_email(db, email: str) -> dict | None:
-    """
-    Find a user by email. Returns full user document or None.
-    Used during login — caller must verify password separately.
-    """
     return db.users.find_one(
         {"email": email, "is_active": True},
         {"projection": {"password_hash": 1, "username": 1, "role": 1, "storage_used": 1, "storage_quota": 1}}
     )
 
-
 def find_user_by_id(db, user_id: str) -> dict | None:
-    """Fetch user profile by _id. Excludes password_hash."""
     return db.users.find_one(
         {"_id": to_object_id(user_id), "is_active": True},
         {"projection": {"password_hash": 0}}
     )
 
-
 def verify_password(plain_password: str, stored_hash: str) -> bool:
-    """Check a plain password against its bcrypt hash."""
     return bcrypt.checkpw(plain_password.encode("utf-8"), stored_hash.encode("utf-8"))
 
-
 def update_last_login(db, user_id: str):
-    """Called after every successful login."""
     db.users.update_one(
         {"_id": to_object_id(user_id)},
         {"$set": {"last_login": now(), "updated_at": now()}}
     )
 
-
 def update_storage_used(db, user_id: str, delta_bytes: int):
-    """
-    Adjust storage_used by delta_bytes (positive = upload, negative = delete).
-    Uses $inc for atomic update.
-    """
-    def update_storage_used(db, user_id: str, delta_bytes: int):
-     db.users.update_one(
+    db.users.update_one(
         {"_id": to_object_id(user_id)},
-        {
-            "$inc": {"storage_used": Int64(delta_bytes)},
-            "$set": {"updated_at": now()}
-        }
+        {"$inc": {"storage_used": Int64(delta_bytes)}, "$set": {"updated_at": now()}}
     )
 
-
 def get_storage_info(db, user_id: str) -> dict:
-    """Returns { storage_used, storage_quota } for a user."""
     doc = db.users.find_one(
         {"_id": to_object_id(user_id)},
         {"projection": {"storage_used": 1, "storage_quota": 1}}
     )
     return {"storage_used": doc["storage_used"], "storage_quota": doc["storage_quota"]} if doc else {}
 
-
 def deactivate_user(db, user_id: str):
-    """Soft-delete a user account."""
     db.users.update_one(
         {"_id": to_object_id(user_id)},
         {"$set": {"is_active": False, "updated_at": now()}}
+    )
+
+# ── FILES ──────────────────────────────────────────────────────────────────
+def insert_file(db, owner_id: str, filename: str, stored_name: str,
+                file_size: int, mime_type: str, file_extension: str,
+                gridfs_id=None, tags: list = None, description: str = "",
+                is_public: bool = False) -> str:
+    result = db.files.insert_one({
+        "filename": filename,
+        "stored_name": stored_name,
+        "owner_id": to_object_id(owner_id),
+        "file_size": Int64(file_size),
+        "mime_type": mime_type,
+        "file_extension": file_extension,
+        "gridfs_id": to_object_id(gridfs_id) if gridfs_id else None,
+        "tags": tags or [],
+        "description": description,
+        "is_public": is_public,
+        "shared_with": [],
+        "download_count": 0,
+        "version": 1,
+        "status": "active",
+        "created_at": now(),
+        "updated_at": now()
+    })
+    file_id = str(result.inserted_id)
+    update_storage_used(db, owner_id, file_size)
+    log_event(db, "upload", owner_id, file_id=file_id, details={"file_size": file_size, "filename": filename})
+    return file_id
+
+def get_user_files(db, user_id: str, page: int = 1, per_page: int = 20) -> list:
+    skip = (page - 1) * per_page
+    cursor = db.files.find(
+        {"owner_id": to_object_id(user_id), "status": "active"},
+        {"projection": {"filename": 1, "file_size": 1, "mime_type": 1, "created_at": 1, "download_count": 1, "is_public": 1, "tags": 1}}
+    ).sort("created_at", -1).skip(skip).limit(per_page)
+    return list(cursor)
+
+def get_file_by_id(db, file_id: str) -> dict | None:
+    return db.files.find_one({"_id": to_object_id(file_id), "status": "active"})
+
+def increment_download_count(db, file_id: str):
+    db.files.update_one(
+        {"_id": to_object_id(file_id)},
+        {"$inc": {"download_count": 1}, "$set": {"updated_at": now()}}
     )
 
 # FILES

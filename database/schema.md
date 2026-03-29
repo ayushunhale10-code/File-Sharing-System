@@ -1,7 +1,6 @@
 # ShareSphere — MongoDB Schema Reference
 
-> **Database:** `sharesphere_db`  
-> **Role:** Database Engineer  
+> **Database:** `sharesphere_db`   
 > **Connection:** `mongodb://sharesphere_app:sharesphere%40123@localhost:27017/sharesphere_db`
 
 ---
