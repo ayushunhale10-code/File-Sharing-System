@@ -59,13 +59,9 @@ def create_user(db, username: str, email: str, password: str, role: str = "user"
 
 
 def find_user_by_email(db, email: str) -> dict | None:
-    """
-    Find a user by email. Returns full user document or None.
-    Used during login — caller must verify password separately.
-    """
     return db.users.find_one(
         {"email": email, "is_active": True},
-        {"projection": {"password_hash": 1, "username": 1, "role": 1, "storage_used": 1, "storage_quota": 1}}
+        {"password_hash": 1, "username": 1, "role": 1, "storage_used": 1, "storage_quota": 1}
     )
 
 
