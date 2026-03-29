@@ -1,2 +1,6 @@
+streamlit
 pymongo
 bcrypt
+python-dotenv
+pymongo[srv]
+gridfs
