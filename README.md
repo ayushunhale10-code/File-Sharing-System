@@ -24,9 +24,19 @@ ShareSphere is a scalable file sharing system built using Streamlit, Python, and
 ## 📁 Project Structure
 ```
 File-Sharing-System/
+├── app.py
 │
-├── app.py                      # Streamlit UI (frontend)
+├── pages/
+│   ├── 1_My_Files.py            ← upload, list, download, delete, search
+│   ├── 2_Shared_With_Me.py      ← files others shared with you
+│   ├── 3_Share_File.py          ← share + revoke access
+│   ├── 4_My_Activity.py         ← personal event feed
+│   ├── 5_Admin_Monitoring.py    ← event stats, storage, suspicious logins
+│   └── 6_Admin_Backup.py        ← run mongodump, view backup history
 │
+├── utils/
+│   └── sidebar.py 
+│ 
 ├── backend/
 │   ├── __init__.py
 │   ├── auth.py                 # Register, login, logout, profile
