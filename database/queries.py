@@ -9,13 +9,20 @@ from dotenv import load_dotenv
 # ── LOAD ENV ────────────────────────────────────────────────────────────────
 load_dotenv()
 MONGO_URI = os.getenv("MONGO_URI")
+print("MONGO_URI:", MONGO_URI)
 
 # ── CONNECTION ───────────────────────────────────────────────────────────────
+from pymongo import MongoClient
+
 def get_db():
-    if not MONGO_URI:
-        raise ValueError("MONGO_URI is not set in the environment variables!")
-    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
-    return client.get_database()
+    client = MongoClient(
+        "mongodb://sharesphere_app:sharesphere%40123@127.0.0.1:27017/?authSource=sharesphere_db",
+        serverSelectionTimeoutMS=5000
+    )
+
+    client.admin.command("ping")  # force auth
+
+    return client["sharesphere_db"]
 
 # ── UTILITY ──────────────────────────────────────────────────────────────────
 def now():
